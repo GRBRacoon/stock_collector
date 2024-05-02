@@ -1,9 +1,6 @@
 import ctypes
-import datetime
 import sys
-import time as Time
 
-import pandas as pd
 import win32com.client
 from PyQt5.QtWidgets import *
 
@@ -44,33 +41,28 @@ class CpEvent:
         self.client = client  # CP 실시간 통신 object
         self.name = name  # 서비스가 다른 이벤트를 구분하기 위한 이름
         self.caller = caller  # callback 을 위해 보관
-        self.last_minute = None
 
     def OnReceived(self):
         # 실시간 처리 - 현재가 주문 체결
-        # current_time = datetime.datetime.now().time
-        # if current_time == datetime.time(15, 30):
-        #     self.caller.create_excel()
-
         if self.name == "stockcur":
             code = self.client.GetHeaderValue(0)  # 초
             name = self.client.GetHeaderValue(1)  # 초
-            time = self.client.GetHeaderValue(18)  # 초
+            timess = self.client.GetHeaderValue(18)  # 초
             exFlag = self.client.GetHeaderValue(19)  # 예상체결 플래그
             cprice = self.client.GetHeaderValue(13)  # 현재가
             diff = self.client.GetHeaderValue(2)  # 대비
             cVol = self.client.GetHeaderValue(17)  # 순간체결수량
             vol = self.client.GetHeaderValue(9)  # 거래량
-            print("data get")
 
             if exFlag != ord("2"):
                 return
 
             item = {}
-            item["종목코드"] = code
-            item["시간"] = time
-
-            item["종가"] = cprice
+            item["code"] = code
+            item["time"] = timess
+            item["diff"] = diff
+            item["cur"] = cprice
+            item["vol"] = vol
 
             # 현재가 업데이트
             self.caller.updateCurData(item)
@@ -113,71 +105,64 @@ class CpPBStockCur(CpPublish):
 
 class CMinchartData:
     def __init__(self):
-        self.data = pd.DataFrame(columns=["종목코드", "시간", "종가"])
-        self.data.set_index(["종목코드"], inplace=True)
+        self.minDatas = {}
         self.objCur = {}
-        self.code_list = []
 
     def stop(self):
         for k, v in self.objCur.items():
             v.Unsubscribe()
 
     def addCode(self, code):
-        # if code not in self.data:
-        #     # 각 종목별로 DataFrame을 생성합니다.
-        #     self.data[code] = pd.DataFrame(columns=["시간", "시가", "고가", "저가", "종가"])
+        if code in self.minDatas:
+            return
 
-        # self.data[code] = []
+        self.minDatas[code] = []
         self.objCur[code] = CpPBStockCur()
         self.objCur[code].Subscribe(code, self)
-        self.code_list.append(code)
 
     def updateCurData(self, item):
-        code = item["종목코드"]
-        time = item["시간"]
-        cur = item["종가"]
+        code = item["code"]
+        time = item["time"]
+        cur = item["cur"]
+        self.makeMinchart(code, time, cur)
 
+    def makeMinchart(self, code, time, cur):
         hh, mm = divmod(time, 10000)
-        mm, ss = divmod(mm, 100)
-        hhmm = hh * 100 + mm
+        mm, tt = divmod(mm, 100)
+        mm += 1
+        if mm == 60:
+            hh += 1
+            mm = 0
 
+        hhmm = hh * 100 + mm
         if hhmm > 1530:
             hhmm = 1530
+        bFind = False
+        minlen = len(self.minDatas[code])
+        if minlen > 0:
+            # 0 : 시간 1 : 시가 2: 고가 3: 저가 4: 종가
+            if self.minDatas[code][-1][0] == hhmm:
+                item = self.minDatas[code][-1]
+                bFind = True
+                item[4] = cur
+                if item[2] < cur:
+                    item[2] = cur
+                if item[3] > cur:
+                    item[3] = cur
 
-        index = (code, hhmm)
-        # 해당 시간의 데이터가 있는지 확인합니다.
+        if bFind == False:
+            self.minDatas[code].append([hhmm, cur, cur, cur, cur])
 
-        if index in self.data.index:
-            self.data.loc[index, "종가"] = cur  # 종가 업데이트
+        #        print(code, self.minDatas[code])
+        return
 
-        else:
-            new_row = pd.DataFrame([item], columns=self.data.columns)
-            new_row.set_index("종목코드", inplace=True)
-            # new_row = pd.Series({"종가": cur}, name=index)
-            self.data = pd.concat([self.data, new_row], ignore_index=True)
-
-    def create_excel(self):
-        if not self.data.empty:
-            today = datetime.datetime.now().strftime("%Y-%m-%d")
-            for item_code in self.code_list:
-                file_name = f"{item_code}_{today}"
-                try:
-                    df = self.data.xs(item_code, level="종목코드")  # 멀티인덱스에서 종목코드에 해당하는 데이터 추출
-                    df.to_excel(file_name)
-                    print(f"파일 저장 성공: {file_name}")
-                except Exception as e:
-                    print(f"파일 저장 실패: {e}")
-            self.data = pd.DataFrame(columns=["종목코드", "시간", "종가"])
-            self.data.set_index(["종목코드"], inplace=True)
-        else:
-            return False
-
-    def printData(self, code):
-        if code in self.data.index:
-            print(self.data)
-            print(self.data.loc[code])
-        else:
-            print(f"종목코드 {code}에 대한 데이터가 존재하지 않습니다.")
+    def print(self, code):
+        print("====================================================-")
+        print("분데이터 print", code, g_objCodeMgr.CodeToName(code))
+        print("시간,시가,고가,저가,종가")
+        for item in self.minDatas[code]:
+            hh, mm = divmod(item[0], 100)
+            print("%02d:%02d,%d,%d,%d,%d" % (hh, mm, item[1], item[2], item[3], item[4]))
 
 
 # print(code, self.minDatas[code])
@@ -219,7 +204,7 @@ class MyWindow(QMainWindow):
 
     def btnPrint_clicked(self):
         for i in range(len(self.codelist)):
-            self.minData.printData(self.codelist[i])
+            self.minData.print(self.codelist[i])
             if i > 10:
                 break
         return
