@@ -174,7 +174,9 @@ class ArticleCrawler(object):
         remaining_tries = int(max_tries)
         while remaining_tries > 0:
             try:
-                return requests.get(url, headers={"User-Agent": "Mozilla/5.0"})
+                headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/98.0.4758.102"}
+                return requests.get(url, headers=headers)
+                # return requests.get(url, headers={'User-Agent':'Mozilla/5.0'})
             except requests.exceptions.RequestException as e:
                 sleep(0.1)
                 print(e)
