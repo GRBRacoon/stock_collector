@@ -1,6 +1,11 @@
-import yfinance as yf
+from datetime import datetime
 
-name = "005930.KS"
-ticker = yf.Ticker(name)
-df = ticker.history(interval="1m", period="2mo", auto_adjust=False)
-print(df)
+from dateutil.relativedelta import relativedelta
+
+# 시작 날짜 설정
+start_date = datetime(2023, 1, 1)
+
+# 12개월 동안 매월 출력
+for i in range(12):
+    print_date = start_date + relativedelta(months=i)
+    print(print_date.strftime("%Y-%m-%d"))

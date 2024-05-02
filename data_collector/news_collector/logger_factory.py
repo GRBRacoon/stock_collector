@@ -1,5 +1,6 @@
 import datetime
 import logging
+import sys
 
 
 class LogFactory:
@@ -16,3 +17,6 @@ class LogFactory:
         file_handler = logging.FileHandler(f"{file_name}.log")
         file_handler.setFormatter(formatter)
         self.log.addHandler(file_handler)
+
+
+print(sys.path)
